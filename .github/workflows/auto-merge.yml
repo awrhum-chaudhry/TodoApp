@@ -65,6 +65,8 @@ jobs:
               per_page: 100,
             });
             const reviewComment = comments.find((comment) =>
+              comment.user?.type === 'Bot' &&
+              comment.user?.login === 'github-actions[bot]' &&
               comment.body?.includes('<!-- ai-pr-review -->')
             );
             const cleanReview = reviewComment?.body?.includes(
