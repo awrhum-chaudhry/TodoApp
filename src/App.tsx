@@ -6,6 +6,14 @@ function App() {
   const [todos, setTodos] = useState<string[]>([])
   const [error, setError] = useState('')
 
+  const handleTodoChange = (value: string) => {
+    setTodoText(value)
+
+    if (value.trim()) {
+      setError('')
+    }
+  }
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -33,7 +41,7 @@ function App() {
             name="todoText"
             type="text"
             value={todoText}
-            onChange={(event) => setTodoText(event.target.value)}
+            onChange={(event) => handleTodoChange(event.target.value)}
             aria-label="Todo text"
             placeholder="Enter a todo"
           />

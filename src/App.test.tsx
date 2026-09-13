@@ -28,6 +28,20 @@ describe('App', () => {
     expect(screen.getByText(/please enter a todo/i)).toBeInTheDocument()
   })
 
+  it('clears the empty todo error when typing a valid todo', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    const input = screen.getByLabelText(/todo text/i)
+    await user.click(screen.getByRole('button', { name: /add todo/i }))
+    expect(screen.getByText(/please enter a todo/i)).toBeInTheDocument()
+
+    await user.type(input, 'Buy milk')
+
+    expect(screen.queryByText(/please enter a todo/i)).not.toBeInTheDocument()
+  })
+
   it('adds multiple todos to the list', async () => {
     const user = userEvent.setup()
 
