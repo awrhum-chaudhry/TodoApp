@@ -50,6 +50,35 @@ describe('App', () => {
     )
   })
 
+  it('deletes the selected todo', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    const input = screen.getByLabelText(/todo text/i)
+    await user.type(input, 'Buy milk')
+    await user.click(screen.getByRole('button', { name: /add todo/i }))
+    await user.click(screen.getByRole('button', { name: /delete buy milk/i }))
+
+    expect(screen.queryByText('Buy milk')).not.toBeInTheDocument()
+  })
+
+  it('keeps other todos when one todo is deleted', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    const input = screen.getByLabelText(/todo text/i)
+    await user.type(input, 'Buy milk')
+    await user.click(screen.getByRole('button', { name: /add todo/i }))
+    await user.type(input, 'Wash dishes')
+    await user.click(screen.getByRole('button', { name: /add todo/i }))
+    await user.click(screen.getByRole('button', { name: /delete buy milk/i }))
+
+    expect(screen.queryByText('Buy milk')).not.toBeInTheDocument()
+    expect(screen.getByText('Wash dishes')).toBeInTheDocument()
+  })
+
   it('rejects empty todo text', async () => {
     const user = userEvent.setup()
 

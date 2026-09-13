@@ -45,6 +45,12 @@ function App() {
     )
   }
 
+  const handleTodoDelete = (index: number) => {
+    setTodos((currentTodos) =>
+      currentTodos.filter((_, todoIndex) => todoIndex !== index),
+    )
+  }
+
   return (
     <main className="todo-app">
       <h1>Todo App</h1>
@@ -86,6 +92,14 @@ function App() {
               {todo.completed ? 'Completed' : 'Complete'}
             </button>
             <span>{todo.text}</span>
+            <button
+              type="button"
+              className="todo-delete"
+              aria-label={`Delete ${todo.text}`}
+              onClick={() => handleTodoDelete(index)}
+            >
+              Delete
+            </button>
           </li>
         ))}
       </ul>
