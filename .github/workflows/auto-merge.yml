@@ -28,6 +28,14 @@ jobs:
             const { owner, repo } = context.repo;
             const headSha = context.payload.workflow_run.head_sha;
             const workflowNames = new Set(['CI', 'AI Pull Request Review']);
+            const repository = await github.rest.repos.get({ owner, repo });
+
+            // Organization-owned repositories are intentionally unsupported by this owner-only policy.
+            if (repository.data.owner.type !== 'User') {
+              core.notice('Auto-merge is disabled because this repository is not user-owned.');
+              return;
+            }
+            const ownerLogin = repository.data.owner.login;
 
             const associatedPulls = await github.paginate(
               github.rest.repos.listPullRequestsAssociatedWithCommit,
@@ -35,7 +43,7 @@ jobs:
             );
             const pullRequest = associatedPulls.find((pull) =>
               pull.state === 'open' &&
-              pull.user?.login === owner &&
+              pull.user?.login === ownerLogin &&
               pull.head.repo?.full_name === `${owner}/${repo}` &&
               pull.head.sha === headSha
             );
