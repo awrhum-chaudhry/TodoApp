@@ -15,6 +15,41 @@ describe('App', () => {
     expect(screen.getByText('Buy milk')).toBeInTheDocument()
   })
 
+  it('allows a user to complete a todo', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    const input = screen.getByLabelText(/todo text/i)
+    await user.type(input, 'Buy milk')
+    await user.click(screen.getByRole('button', { name: /add todo/i }))
+    await user.click(screen.getByRole('button', { name: /mark buy milk as complete/i }))
+
+    expect(screen.getByText('Buy milk').closest('li')).toHaveClass('completed')
+    expect(screen.getByRole('button', { name: /mark buy milk as incomplete/i })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
+  it('allows a user to toggle a completed todo back to incomplete', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    const input = screen.getByLabelText(/todo text/i)
+    await user.type(input, 'Buy milk')
+    await user.click(screen.getByRole('button', { name: /add todo/i }))
+    await user.click(screen.getByRole('button', { name: /mark buy milk as complete/i }))
+    await user.click(screen.getByRole('button', { name: /mark buy milk as incomplete/i }))
+
+    expect(screen.getByText('Buy milk').closest('li')).not.toHaveClass('completed')
+    expect(screen.getByRole('button', { name: /mark buy milk as complete/i })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
   it('rejects empty todo text', async () => {
     const user = userEvent.setup()
 
