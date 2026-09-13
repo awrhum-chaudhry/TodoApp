@@ -1,0 +1,132 @@
+name: Auto Merge Clean Pull Requests
+
+on:
+  workflow_run:
+    workflows: [CI, AI Pull Request Review]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Open pull request number to evaluate'
+        required: true
+        type: string
+      head_sha:
+        description: 'Exact pull request head commit SHA to evaluate'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: write
+
+jobs:
+  merge:
+    # Limit auto-merge to owner-created PRs because review processes untrusted repository content.
+    if: >-
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.pr_number != '' &&
+      github.event.inputs.head_sha != '')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify checks, clean AI review, and mergeability
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const headSha = context.eventName === 'workflow_run'
+              ? context.payload.workflow_run.head_sha
+              : context.payload.inputs.head_sha;
+            const requestedPrNumber = context.eventName === 'workflow_dispatch'
+              ? Number(context.payload.inputs.pr_number)
+              : null;
+            const workflowNames = new Set(['CI', 'AI Pull Request Review']);
+            const repository = await github.rest.repos.get({ owner, repo });
+
+            // Organization-owned repositories are intentionally unsupported by this owner-only policy.
+            if (repository.data.owner.type !== 'User') {
+              core.notice('Auto-merge is disabled because this repository is not user-owned.');
+              return;
+            }
+            const ownerLogin = repository.data.owner.login;
+
+            const associatedPulls = await github.paginate(
+              github.rest.repos.listPullRequestsAssociatedWithCommit,
+              { owner, repo, commit_sha: headSha, per_page: 100 }
+            );
+            const pullRequest = associatedPulls.find((pull) =>
+              pull.state === 'open' &&
+              (requestedPrNumber === null || pull.number === requestedPrNumber) &&
+              pull.user?.login === ownerLogin &&
+              pull.head.repo?.full_name === `${owner}/${repo}` &&
+              pull.head.sha === headSha
+            );
+
+            if (!pullRequest) {
+              core.notice(`No open same-repository pull request found for ${headSha}.`);
+              return;
+            }
+
+            const workflowRuns = await github.paginate(
+              github.rest.actions.listWorkflowRunsForRepo,
+              { owner, repo, head_sha: headSha, per_page: 100 }
+            );
+            const successfulWorkflows = new Set(
+              workflowRuns
+                .filter((run) => run.conclusion === 'success' && workflowNames.has(run.name))
+                .map((run) => run.name)
+            );
+
+            if (successfulWorkflows.size !== workflowNames.size) {
+              core.notice('CI and AI review have not both passed for the current commit.');
+              return;
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: pullRequest.number,
+              per_page: 100,
+            });
+            const reviewComment = comments.find((comment) =>
+              comment.user?.type === 'Bot' &&
+              comment.user?.login === 'github-actions[bot]' &&
+              comment.body?.includes('<!-- ai-pr-review -->')
+            );
+            const cleanReview = reviewComment?.body?.includes(
+              'PR is approved/clean. No significant issues or findings were found.'
+            ) && !reviewComment.body.includes('## Findings');
+
+            if (!cleanReview) {
+              core.notice('The AI review comment is not clean/approved.');
+              return;
+            }
+
+            const currentPull = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pullRequest.number,
+            });
+            if (
+              currentPull.data.state !== 'open' ||
+              currentPull.data.head.sha !== headSha ||
+              currentPull.data.mergeable_state !== 'clean'
+            ) {
+              core.notice('The pull request changed or is not currently mergeable without conflicts.');
+              return;
+            }
+
+            await github.rest.pulls.merge({
+              owner,
+              repo,
+              pull_number: pullRequest.number,
+              merge_method: 'squash',
+              sha: headSha,
+            });
+            core.notice(`Merged pull request #${pullRequest.number} after all checks passed.`);
