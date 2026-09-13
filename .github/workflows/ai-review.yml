@@ -96,8 +96,11 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import random
           import re
           import time
+          from datetime import datetime, timezone
+          from email.utils import parsedate_to_datetime
           from urllib.error import HTTPError
           from urllib.request import Request, urlopen
 
@@ -140,6 +143,23 @@ jobs:
           """
 
           retryable_statuses = {429, 500, 502, 503, 504}
+
+          def retry_delay(error, attempt):
+              if error.code == 429:
+                  retry_after = error.headers.get('Retry-After')
+                  if retry_after:
+                      try:
+                          return max(0.0, float(retry_after))
+                      except ValueError:
+                          try:
+                              retry_at = parsedate_to_datetime(retry_after)
+                              if retry_at.tzinfo is None:
+                                  retry_at = retry_at.replace(tzinfo=timezone.utc)
+                              return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+                          except (TypeError, ValueError, OverflowError):
+                              pass
+                  return 10 * (2 ** attempt) + random.uniform(0, 5)
+              return 2 ** attempt
 
           def is_valid_review(review_text):
               normalized_review = review_text.lower()
@@ -201,9 +221,13 @@ jobs:
                           result = json.load(response)
                       break
                   except HTTPError as error:
-                      if error.code not in retryable_statuses or http_attempt == 3:
+                        if error.code not in retryable_statuses:
                           raise
-                      time.sleep(2 ** http_attempt)
+                        if http_attempt == 3:
+                          raise RuntimeError(
+                            f'Gemini request failed after 4 attempts with HTTP {error.code}'
+                          ) from error
+                        time.sleep(retry_delay(error, http_attempt))
 
               parts = result.get('candidates', [{}])[0].get('content', {}).get('parts', [])
               review = ''.join(part.get('text', '') for part in parts).strip()
