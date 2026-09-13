@@ -1,9 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import './App.css'
 
+type Todo = {
+  text: string
+  completed: boolean
+}
+
 function App() {
   const [todoText, setTodoText] = useState('')
-  const [todos, setTodos] = useState<string[]>([])
+  const [todos, setTodos] = useState<Todo[]>([])
   const [error, setError] = useState('')
 
   const handleTodoChange = (value: string) => {
@@ -24,9 +29,20 @@ function App() {
       return
     }
 
-    setTodos((currentTodos) => [...currentTodos, trimmedText])
+    setTodos((currentTodos) => [
+      ...currentTodos,
+      { text: trimmedText, completed: false },
+    ])
     setTodoText('')
     setError('')
+  }
+
+  const handleTodoToggle = (index: number) => {
+    setTodos((currentTodos) =>
+      currentTodos.map((todo, todoIndex) =>
+        todoIndex === index ? { ...todo, completed: !todo.completed } : todo,
+      ),
+    )
   }
 
   return (
@@ -52,7 +68,25 @@ function App() {
 
       <ul className="todo-list" aria-label="Todo list">
         {todos.map((todo, index) => (
-          <li key={`${todo}-${index}`}>{todo}</li>
+          <li
+            key={`${todo.text}-${index}`}
+            className={todo.completed ? 'completed' : undefined}
+          >
+            <button
+              type="button"
+              className="todo-toggle"
+              aria-label={
+                todo.completed
+                  ? `Mark ${todo.text} as incomplete`
+                  : `Mark ${todo.text} as complete`
+              }
+              aria-pressed={todo.completed}
+              onClick={() => handleTodoToggle(index)}
+            >
+              {todo.completed ? 'Completed' : 'Complete'}
+            </button>
+            <span>{todo.text}</span>
+          </li>
         ))}
       </ul>
     </main>
