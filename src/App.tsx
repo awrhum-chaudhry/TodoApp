@@ -38,18 +38,16 @@ function App() {
     setError('')
   }
 
-  const handleTodoToggle = (index: number) => {
+  const handleTodoToggle = (id: string) => {
     setTodos((currentTodos) =>
-      currentTodos.map((todo, todoIndex) =>
-        todoIndex === index ? { ...todo, completed: !todo.completed } : todo,
+      currentTodos.map((todo) =>
+        todo.id === id ? { ...todo, completed: !todo.completed } : todo,
       ),
     )
   }
 
-  const handleTodoDelete = (index: number) => {
-    setTodos((currentTodos) =>
-      currentTodos.filter((_, todoIndex) => todoIndex !== index),
-    )
+  const handleTodoDelete = (id: string) => {
+    setTodos((currentTodos) => currentTodos.filter((todo) => todo.id !== id))
   }
 
   return (
@@ -74,7 +72,7 @@ function App() {
       </form>
 
       <ul className="todo-list" aria-label="Todo list">
-        {todos.map((todo, index) => (
+        {todos.map((todo) => (
           <li
             key={todo.id}
             className={todo.completed ? 'completed' : undefined}
@@ -88,7 +86,7 @@ function App() {
                   : `Mark ${todo.text} as complete`
               }
               aria-pressed={todo.completed}
-              onClick={() => handleTodoToggle(index)}
+              onClick={() => handleTodoToggle(todo.id)}
             >
               {todo.completed ? 'Completed' : 'Complete'}
             </button>
@@ -97,7 +95,7 @@ function App() {
               type="button"
               className="todo-delete"
               aria-label={`Delete ${todo.text}`}
-              onClick={() => handleTodoDelete(index)}
+              onClick={() => handleTodoDelete(todo.id)}
             >
               Delete
             </button>
