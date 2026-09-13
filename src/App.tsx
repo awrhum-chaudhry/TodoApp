@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import './App.css'
 
 type Todo = {
+  id: string
   text: string
   completed: boolean
 }
@@ -31,7 +32,7 @@ function App() {
 
     setTodos((currentTodos) => [
       ...currentTodos,
-      { text: trimmedText, completed: false },
+      { id: crypto.randomUUID(), text: trimmedText, completed: false },
     ])
     setTodoText('')
     setError('')
@@ -75,7 +76,7 @@ function App() {
       <ul className="todo-list" aria-label="Todo list">
         {todos.map((todo, index) => (
           <li
-            key={`${todo.text}-${index}`}
+            key={todo.id}
             className={todo.completed ? 'completed' : undefined}
           >
             <button
