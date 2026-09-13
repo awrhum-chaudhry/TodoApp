@@ -96,6 +96,8 @@ jobs:
           import json
           import os
           import re
+          import time
+          from urllib.error import HTTPError
           from urllib.request import Request, urlopen
 
           with open('/tmp/review-context.md', encoding='utf-8') as context_file:
@@ -147,8 +149,16 @@ jobs:
               method='POST',
           )
 
-          with urlopen(request) as response:
-              result = json.load(response)
+          retryable_statuses = {429, 500, 502, 503, 504}
+          for attempt in range(4):
+              try:
+                  with urlopen(request) as response:
+                      result = json.load(response)
+                  break
+              except HTTPError as error:
+                  if error.code not in retryable_statuses or attempt == 3:
+                      raise
+                  time.sleep(2 ** attempt)
 
           parts = result.get('candidates', [{}])[0].get('content', {}).get('parts', [])
           review = ''.join(part.get('text', '') for part in parts).strip()
