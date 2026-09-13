@@ -4,6 +4,16 @@ on:
   workflow_run:
     workflows: [CI, AI Pull Request Review]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Open pull request number to evaluate'
+        required: true
+        type: string
+      head_sha:
+        description: 'Exact pull request head commit SHA to evaluate'
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -15,8 +25,12 @@ jobs:
   merge:
     # Limit auto-merge to owner-created PRs because review processes untrusted repository content.
     if: >-
+      (github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.pr_number != '' &&
+      github.event.inputs.head_sha != '')
     runs-on: ubuntu-latest
 
     steps:
@@ -26,7 +40,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { owner, repo } = context.repo;
-            const headSha = context.payload.workflow_run.head_sha;
+            const headSha = context.eventName === 'workflow_run'
+              ? context.payload.workflow_run.head_sha
+              : context.payload.inputs.head_sha;
+            const requestedPrNumber = context.eventName === 'workflow_dispatch'
+              ? Number(context.payload.inputs.pr_number)
+              : null;
             const workflowNames = new Set(['CI', 'AI Pull Request Review']);
             const repository = await github.rest.repos.get({ owner, repo });
 
@@ -43,6 +62,7 @@ jobs:
             );
             const pullRequest = associatedPulls.find((pull) =>
               pull.state === 'open' &&
+              (requestedPrNumber === null || pull.number === requestedPrNumber) &&
               pull.user?.login === ownerLogin &&
               pull.head.repo?.full_name === `${owner}/${repo}` &&
               pull.head.sha === headSha
