@@ -7,7 +7,6 @@ on:
 permissions:
   contents: read
   issues: write
-  models: read
   pull-requests: read
 
 concurrency:
@@ -56,9 +55,9 @@ jobs:
             done
           } > /tmp/review-context.md
 
-      - name: Ask GitHub Models for a review
+      - name: Ask Gemini for a review
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           python - <<'PY'
@@ -87,20 +86,30 @@ jobs:
           """
 
           request = Request(
-              'https://models.github.ai/inference/chat/completions',
+              'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
               data=json.dumps({
-                  'model': 'openai/gpt-4.1-mini',
-                  'messages': [
-                      {'role': 'system', 'content': 'You are a careful senior code reviewer.'},
-                      {'role': 'user', 'content': prompt},
+                  'systemInstruction': {
+                      'parts': [
+                          {'text': 'You are a careful senior code reviewer.'},
+                      ],
+                  },
+                  'contents': [
+                      {
+                          'role': 'user',
+                          'parts': [
+                              {'text': prompt},
+                          ],
+                      },
                   ],
-                  'temperature': 0.1,
-                  'max_tokens': 4000,
+                  'generationConfig': {
+                      'temperature': 0.1,
+                      'maxOutputTokens': 4000,
+                  },
               }).encode(),
               headers={
                   'Accept': 'application/json',
                   'Content-Type': 'application/json',
-                  'Authorization': f"Bearer {os.environ['GITHUB_TOKEN']}",
+                  'x-goog-api-key': os.environ['GEMINI_API_KEY'],
               },
               method='POST',
           )
@@ -108,12 +117,15 @@ jobs:
           with urlopen(request) as response:
               result = json.load(response)
 
-          review = result['choices'][0]['message']['content'].strip()
+          parts = result.get('candidates', [{}])[0].get('content', {}).get('parts', [])
+          review = ''.join(part.get('text', '') for part in parts).strip()
+          if not review:
+              raise RuntimeError('Gemini returned no review text')
           with open('/tmp/review.md', 'w', encoding='utf-8') as review_file:
               review_file.write('<!-- ai-pr-review -->\n')
               review_file.write('## AI Pull Request Review\n\n')
               review_file.write(review)
-              review_file.write('\n\n_Reviewed with GitHub Models._\n')
+              review_file.write('\n\n_Reviewed with Gemini._\n')
           PY
 
       - name: Post or update the PR comment
