@@ -139,63 +139,79 @@ jobs:
           {context}
           """
 
-          request = Request(
-              'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
-              data=json.dumps({
-                  'systemInstruction': {
-                      'parts': [
-                          {'text': 'You are a careful senior code reviewer.'},
-                      ],
-                  },
-                  'contents': [
-                      {
-                          'role': 'user',
+          retryable_statuses = {429, 500, 502, 503, 504}
+
+          def is_valid_review(review_text):
+              normalized_review = review_text.lower()
+              has_clean_statement = bool(
+                  re.search(r'\b(approved|clean)\b', normalized_review)
+                  and re.search(r'\b(no|without)\b.{0,40}\b(significant|major|material)?\s*(issues?|findings?)\b', normalized_review)
+              )
+              has_finding = all(
+                  re.search(pattern, normalized_review)
+                  for pattern in (
+                      r'\b(critical|high|medium|low)\b',
+                      r'\b(problem|issue|bug|risk|vulnerability)\b',
+                      r'\b(recommend|recommendation|should|fix)\b',
+                  )
+              )
+              return len(review_text) >= 120 and (has_clean_statement or has_finding)
+
+          review = ''
+          for generation_attempt in range(3):
+              generation_prompt = prompt
+              if generation_attempt > 0:
+                  generation_prompt += """
+
+            Your previous response was invalid. Return only the required structured Markdown review. Do not output code, notes, partial thoughts, or anything outside the required format.
+            """
+
+              request = Request(
+                  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',
+                  data=json.dumps({
+                      'systemInstruction': {
                           'parts': [
-                              {'text': prompt},
+                              {'text': 'You are a careful senior code reviewer.'},
                           ],
                       },
-                  ],
-                  'generationConfig': {
-                      'temperature': 0.1,
-                      'maxOutputTokens': 4000,
+                      'contents': [
+                          {
+                              'role': 'user',
+                              'parts': [
+                                  {'text': generation_prompt},
+                              ],
+                          },
+                      ],
+                      'generationConfig': {
+                          'temperature': 0.1,
+                          'maxOutputTokens': 4000,
+                      },
+                  }).encode(),
+                  headers={
+                      'Accept': 'application/json',
+                      'Content-Type': 'application/json',
+                      'x-goog-api-key': os.environ['GEMINI_API_KEY'],
                   },
-              }).encode(),
-              headers={
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                  'x-goog-api-key': os.environ['GEMINI_API_KEY'],
-              },
-              method='POST',
-          )
-
-          retryable_statuses = {429, 500, 502, 503, 504}
-          for attempt in range(4):
-              try:
-                  with urlopen(request) as response:
-                      result = json.load(response)
-                  break
-              except HTTPError as error:
-                  if error.code not in retryable_statuses or attempt == 3:
-                      raise
-                  time.sleep(2 ** attempt)
-
-          parts = result.get('candidates', [{}])[0].get('content', {}).get('parts', [])
-          review = ''.join(part.get('text', '') for part in parts).strip()
-          normalized_review = review.lower()
-          has_clean_statement = bool(
-              re.search(r'\b(approved|clean)\b', normalized_review)
-              and re.search(r'\b(no|without)\b.{0,40}\b(significant|major|material)?\s*(issues?|findings?)\b', normalized_review)
-          )
-          has_finding = all(
-              re.search(pattern, normalized_review)
-              for pattern in (
-                  r'\b(critical|high|medium|low)\b',
-                  r'\b(problem|issue|bug|risk|vulnerability)\b',
-                  r'\b(recommend|recommendation|should|fix)\b',
+                  method='POST',
               )
-          )
-          if len(review) < 120 or not (has_clean_statement or has_finding):
-              raise RuntimeError('Gemini returned an incomplete review')
+
+              for http_attempt in range(4):
+                  try:
+                      with urlopen(request) as response:
+                          result = json.load(response)
+                      break
+                  except HTTPError as error:
+                      if error.code not in retryable_statuses or http_attempt == 3:
+                          raise
+                      time.sleep(2 ** http_attempt)
+
+              parts = result.get('candidates', [{}])[0].get('content', {}).get('parts', [])
+              review = ''.join(part.get('text', '') for part in parts).strip()
+              if is_valid_review(review):
+                  break
+          else:
+              raise RuntimeError('Gemini returned an incomplete or invalid review after 3 generation attempts')
+
           with open('/tmp/review.md', 'w', encoding='utf-8') as review_file:
               review_file.write('<!-- ai-pr-review -->\n')
               review_file.write('## AI Pull Request Review\n\n')
