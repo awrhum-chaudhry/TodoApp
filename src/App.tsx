@@ -7,6 +7,14 @@ type Todo = {
   completed: boolean
 }
 
+function generateTodoId() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 function App() {
   const [todoText, setTodoText] = useState('')
   const [todos, setTodos] = useState<Todo[]>([])
@@ -32,7 +40,7 @@ function App() {
 
     setTodos((currentTodos) => [
       ...currentTodos,
-      { id: crypto.randomUUID(), text: trimmedText, completed: false },
+      { id: generateTodoId(), text: trimmedText, completed: false },
     ])
     setTodoText('')
     setError('')
