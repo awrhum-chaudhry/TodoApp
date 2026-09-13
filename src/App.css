@@ -104,3 +104,13 @@ button:hover {
 .todo-toggle:hover {
   background: #374151;
 }
+
+.todo-delete {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.85rem;
+  background: #b91c1c;
+}
+
+.todo-delete:hover {
+  background: #991b1b;
+}

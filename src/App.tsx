@@ -2,8 +2,17 @@ import { useState, type FormEvent } from 'react'
 import './App.css'
 
 type Todo = {
+  id: string
   text: string
   completed: boolean
+}
+
+function generateTodoId() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 function App() {
@@ -31,18 +40,22 @@ function App() {
 
     setTodos((currentTodos) => [
       ...currentTodos,
-      { text: trimmedText, completed: false },
+      { id: generateTodoId(), text: trimmedText, completed: false },
     ])
     setTodoText('')
     setError('')
   }
 
-  const handleTodoToggle = (index: number) => {
+  const handleTodoToggle = (id: string) => {
     setTodos((currentTodos) =>
-      currentTodos.map((todo, todoIndex) =>
-        todoIndex === index ? { ...todo, completed: !todo.completed } : todo,
+      currentTodos.map((todo) =>
+        todo.id === id ? { ...todo, completed: !todo.completed } : todo,
       ),
     )
+  }
+
+  const handleTodoDelete = (id: string) => {
+    setTodos((currentTodos) => currentTodos.filter((todo) => todo.id !== id))
   }
 
   return (
@@ -67,9 +80,9 @@ function App() {
       </form>
 
       <ul className="todo-list" aria-label="Todo list">
-        {todos.map((todo, index) => (
+        {todos.map((todo) => (
           <li
-            key={`${todo.text}-${index}`}
+            key={todo.id}
             className={todo.completed ? 'completed' : undefined}
           >
             <button
@@ -81,11 +94,19 @@ function App() {
                   : `Mark ${todo.text} as complete`
               }
               aria-pressed={todo.completed}
-              onClick={() => handleTodoToggle(index)}
+              onClick={() => handleTodoToggle(todo.id)}
             >
               {todo.completed ? 'Completed' : 'Complete'}
             </button>
             <span>{todo.text}</span>
+            <button
+              type="button"
+              className="todo-delete"
+              aria-label={`Delete ${todo.text}`}
+              onClick={() => handleTodoDelete(todo.id)}
+            >
+              Delete
+            </button>
           </li>
         ))}
       </ul>
