@@ -114,7 +114,25 @@ jobs:
           - Code quality issues
           - Scope violations
 
-          For each finding, include severity (critical, high, medium, or low), the affected file and line when available, the problem, and a concrete recommendation. Do not invent issues. If there are no significant issues, say exactly that the PR is approved/clean and briefly explain what was checked. Return concise Markdown suitable for a GitHub PR comment.
+          Do not invent issues. Return only the final Markdown review and do not stop mid-response. Do not output raw source code unless it is needed inside a finding. Do not output internal thoughts, notes, or words like "Wait". Do not repeat the repository context.
+
+          If issues are found, use exactly this structure:
+          ## Findings
+
+          ### Finding 1
+
+          - Severity: critical/high/medium/low
+          - File: path/to/file, with line when available
+          - Problem: clear explanation
+          - Recommendation: concrete fix
+
+          Repeat the finding block for additional findings. Include only significant bugs, incorrect implementation, missing or weak tests, security risks, code quality issues, or scope violations.
+
+          If there are no significant findings, include exactly this section and sentence:
+          ## Review Result
+          PR is approved/clean. No significant issues or findings were found.
+
+          Then briefly explain what files and areas were checked. Return concise Markdown suitable for a GitHub PR comment.
 
           Repository context:
           {context}
