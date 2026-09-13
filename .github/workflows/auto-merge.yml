@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   merge:
+    # Limit auto-merge to owner-created PRs because review processes untrusted repository content.
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
@@ -34,6 +35,7 @@ jobs:
             );
             const pullRequest = associatedPulls.find((pull) =>
               pull.state === 'open' &&
+              pull.user?.login === owner &&
               pull.head.repo?.full_name === `${owner}/${repo}` &&
               pull.head.sha === headSha
             );
@@ -83,7 +85,11 @@ jobs:
               repo,
               pull_number: pullRequest.number,
             });
-            if (currentPull.data.head.sha !== headSha || currentPull.data.mergeable_state !== 'clean') {
+            if (
+              currentPull.data.state !== 'open' ||
+              currentPull.data.head.sha !== headSha ||
+              currentPull.data.mergeable_state !== 'clean'
+            ) {
               core.notice('The pull request changed or is not currently mergeable without conflicts.');
               return;
             }
