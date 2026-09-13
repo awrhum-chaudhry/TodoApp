@@ -32,23 +32,54 @@ jobs:
         run: |
           set -euo pipefail
 
-          git diff --no-ext-diff --unified=80 "$BASE_SHA" "$HEAD_SHA" > /tmp/pr.diff
+          is_reviewable() {
+            case "$1" in
+              package-lock.json|*/package-lock.json|yarn.lock|*/yarn.lock|pnpm-lock.yaml|*/pnpm-lock.yaml|npm-shrinkwrap.json|*/npm-shrinkwrap.json|\
+              node_modules/*|*/node_modules/*|dist/*|*/dist/*|build/*|*/build/*|coverage/*|*/coverage/*|.next/*|*/.next/*|out/*|*/out/*|\
+              vendor/*|*/vendor/*|*.map|*/*.map|*.min.js|*/*.min.js|*.min.css|*/*.min.css|*.generated.*|*/*.generated.*)
+                return 1
+                ;;
+            esac
+            return 0
+          }
+
+          priority_files=()
+          other_files=()
+          while IFS= read -r -d '' file; do
+            if is_reviewable "$file"; then
+              case "$file" in
+                src/*|*/src/*|test/*|*/test/*|tests/*|*/tests/*|.github/workflows/*|*.ts|*/*.ts|*.tsx|*/*.tsx|*.js|*/*.js|*.jsx|*/*.jsx|*.css|*/*.css|*.html|*/*.html|*.yml|*/*.yml|*.yaml|*/*.yaml)
+                  priority_files+=("$file")
+                  ;;
+                *)
+                  other_files+=("$file")
+                  ;;
+              esac
+            fi
+          done < <(git diff --name-only -z --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA")
+          reviewable_files=("${priority_files[@]}" "${other_files[@]}")
+
+          if [ "${#reviewable_files[@]}" -gt 0 ]; then
+            git diff --no-ext-diff --unified=80 "$BASE_SHA" "$HEAD_SHA" -- "${reviewable_files[@]}" > /tmp/pr.diff
+          else
+            : > /tmp/pr.diff
+          fi
+
           {
             printf '%s\n' '# Pull request diff' '```diff'
             head -c 90000 /tmp/pr.diff
             printf '%s\n' '```' '' '# Relevant repository files'
 
-            git diff --name-only -z --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" |
-              while IFS= read -r -d '' file; do
-                if [ -f "$file" ]; then
-                  printf '\n## %s\n```\n' "$file"
-                  head -c 20000 "$file"
-                  printf '\n```\n'
-                fi
-              done
+            for file in "${reviewable_files[@]}"; do
+              if [ -f "$file" ]; then
+                printf '\n## %s\n```\n' "$file"
+                head -c 20000 "$file"
+                printf '\n```\n'
+              fi
+            done
 
             for file in package.json README.md vite.config.ts tsconfig.json eslint.config.js; do
-              if [ -f "$file" ] && ! git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -Fxq "$file"; then
+              if [ -f "$file" ] && is_reviewable "$file" && ! git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -Fxq "$file"; then
                 printf '\n## %s\n```\n' "$file"
                 head -c 10000 "$file"
                 printf '\n```\n'
@@ -64,6 +95,7 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
           from urllib.request import Request, urlopen
 
           with open('/tmp/review-context.md', encoding='utf-8') as context_file:
@@ -120,8 +152,21 @@ jobs:
 
           parts = result.get('candidates', [{}])[0].get('content', {}).get('parts', [])
           review = ''.join(part.get('text', '') for part in parts).strip()
-          if not review:
-              raise RuntimeError('Gemini returned no review text')
+          normalized_review = review.lower()
+          has_clean_statement = bool(
+              re.search(r'\b(approved|clean)\b', normalized_review)
+              and re.search(r'\b(no|without)\b.{0,40}\b(significant|major|material)?\s*(issues?|findings?)\b', normalized_review)
+          )
+          has_finding = all(
+              re.search(pattern, normalized_review)
+              for pattern in (
+                  r'\b(critical|high|medium|low)\b',
+                  r'\b(problem|issue|bug|risk|vulnerability)\b',
+                  r'\b(recommend|recommendation|should|fix)\b',
+              )
+          )
+          if len(review) < 120 or not (has_clean_statement or has_finding):
+              raise RuntimeError('Gemini returned an incomplete review')
           with open('/tmp/review.md', 'w', encoding='utf-8') as review_file:
               review_file.write('<!-- ai-pr-review -->\n')
               review_file.write('## AI Pull Request Review\n\n')
